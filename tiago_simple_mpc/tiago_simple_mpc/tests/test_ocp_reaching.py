@@ -25,6 +25,8 @@ from linear_feedback_controller_msgs_py.numpy_conversions import (
 )
 import linear_feedback_controller_msgs_py.lfc_py_types as lfc_py_types
 
+from tiago_simple_mpc.ocp.visualizer import TrajectoryVisualizer
+
 from rclpy.qos import (
     QoSProfile,
     ReliabilityPolicy,
@@ -48,7 +50,6 @@ class OCPReachingNode(Node):
         self.has_free_flyer = True
           
         target_joints = [
-            # 'wheel_left_joint', 'wheel_right_joint',
             # 'torso_lift_joint',
             'arm_1_joint', 'arm_2_joint', 'arm_3_joint',
             'arm_4_joint', 'arm_5_joint', 'arm_6_joint', 'arm_7_joint'
@@ -75,10 +76,6 @@ class OCPReachingNode(Node):
         self.viz = MeshcatVisualizer(self.model, None, self.visual_model)
         self.viz.initViewer(self.viz_server)
         self.viz.loadViewerModel()
-        
-        # Display neutral configuration
-        # q0 = pin.neutral(self.model)
-        # self.viz.display(q0)
 
         self.target_frame = "gripper_grasping_frame"
         
@@ -94,6 +91,8 @@ class OCPReachingNode(Node):
         self.current_sensor_py = None
         self.x_measured = None  # Will be set in callback
         self.target_pose = None  # Will be set in callback
+        
+        self.visualizer = None  # Will be initialized in callback
         
         # QoS for real-time
         qos_rt = QoSProfile(
@@ -264,8 +263,34 @@ class OCPReachingNode(Node):
                 q_final = self.solver.xs[-1][:nq]
                 self._visualize_state(q_final, "final")
 
-            self.display_results()
+            # self.display_results()
             self.get_logger().info("OCP test completed!")
+            
+            # Initialize visualizer
+            self.visualizer = TrajectoryVisualizer(
+                viz=self.viz,
+                model=self.model,
+                data=self.data,
+                frame_id=self.frame_id,
+                target_pose=self.target_pose,
+                dt=self.dt,
+                logger=self.get_logger()
+            )
+            
+            # Display results
+            self.visualizer.display_results(
+                xs_solution=self.xs_solution,
+                us_solution=self.us_solution,
+                cost=self.solver.cost
+            )
+            
+            # Replay trajectory in infinite loop
+            self.visualizer.replay_trajectory_loop(
+                trajectory_q=self.trajectory_q,
+                fps=30,
+                slowdown=2.0,
+                pause_between_loops=2.0  # 2 seconde de pause entre chaque boucle
+            )
 
         except Exception as e:
             self.get_logger().error(f"❌ Error in sensor callback: {e}")
@@ -318,7 +343,7 @@ class OCPReachingNode(Node):
         # Build q_planar
         q_planar = np.array([x, y, cos_theta, sin_theta])
 
-        # 2D base velocity (6 → 3) ---
+        # 2D base velocity (6 → 3)
         vx = v_ff[0]
         vy = v_ff[1]
         # vz = v_ff[2]  # not used in planar
@@ -330,7 +355,7 @@ class OCPReachingNode(Node):
         # Build v_planar (more efficient)
         v_planar = np.array([vx, vy, omega])
 
-        # --- VALIDATION ---
+        # Validation
         assert q_planar.shape == (4,), f"❌ q_planar shape error: {q_planar.shape}, expected (4,)"
         assert v_planar.shape == (3,), f"❌ v_planar shape error: {v_planar.shape}, expected (3,)"
 
@@ -386,7 +411,6 @@ class OCPReachingNode(Node):
             weight=control_reg_weight,
         )
         
-        
         terminal_cost_manager = CostModelManager(state, actuation)
 
         terminal_cost_manager.add_frame_placement_cost(
@@ -395,7 +419,6 @@ class OCPReachingNode(Node):
             weight=ee_tracking_weight * 10  # 10x stronger at the end
         )
         
-
         self.problem = self.ocp_builder.build(
             running_cost_managers=[running_cost_manager] * self.horizon_steps,
             terminal_cost_manager=terminal_cost_manager,
@@ -433,108 +456,6 @@ class OCPReachingNode(Node):
         # Store solution
         self.xs_solution = self.solver.xs
         self.us_solution = self.solver.us
-        
-        # Replay trajectory
-        self.replay_trajectory(fps=30, slowdown=10.0)
-        
-    def replay_trajectory(self, fps=30, slowdown=1.0):
-        """
-        Replay the MPC trajectory in MeshCat
-        
-        Args:
-            fps: Frames per second for animation
-            slowdown: Factor to slow down (>1) or speed up (<1) the replay
-        """
-        if not hasattr(self, 'trajectory_q') or len(self.trajectory_q) == 0:
-            self.get_logger().warn("⚠️ No trajectory to replay!")
-            return
-        
-        self.get_logger().info(
-            f"🎬 Replaying trajectory:\n"
-            f"  Nodes: {len(self.trajectory_q)}\n"
-            f"  Duration: {len(self.trajectory_q) * self.dt:.2f}s\n"
-            f"  FPS: {fps}\n"
-            f"  Slowdown: {slowdown}x"
-        )
-        
-        # Compute delay between frames
-        delay = (1.0 / fps) * slowdown
-        
-        # Display initial state
-        self.viz.display(self.trajectory_q[0])
-        time.sleep(1.0)  # Pause at start
-        
-        # Replay each configuration
-        for i, q in enumerate(self.trajectory_q):
-            self.viz.display(q)
-            
-            # Update EE sphere position
-            pin.forwardKinematics(self.model, self.data, q)
-            pin.updateFramePlacement(self.model, self.data, self.frame_id)
-            ee_pos = self.data.oMf[self.frame_id].translation.copy()
-            
-            self.viz.viewer["ee_sphere"].set_transform(
-                tf.translation_matrix(ee_pos)
-            )
-            
-            # Print progress every 10 frames
-            if i % 10 == 0:
-                distance_to_target = np.linalg.norm(ee_pos - self.target_pose.translation)
-                self.get_logger().info(
-                    f"  Frame {i}/{len(self.trajectory_q)} | "
-                    f"Distance to target: {distance_to_target:.4f}m"
-                )
-            
-            time.sleep(delay)
-        
-        # Hold final state
-        self.get_logger().info("✅ Replay completed!")
-        time.sleep(2.0)
-        
-    def display_results(self):
-        """Display OCP solution results."""
-        
-        self.get_logger().info("=" * 60)
-        self.get_logger().info("📊 OCP SOLUTION RESULTS")
-        self.get_logger().info("=" * 60)
-        
-        # Final cost
-        self.get_logger().info(f"Final cost: {self.solver.cost:.6e}")
-        
-        # Check final end-effector position
-        q_final = self.xs_solution[-1][:self.model.nq]
-        pin.forwardKinematics(self.model, self.data, q_final)
-        pin.updateFramePlacement(self.model, self.data, self.frame_id)
-        ee_pos_final = self.data.oMf[self.frame_id].translation
-        
-        error = np.linalg.norm(ee_pos_final - self.target_pose.translation)
-        
-        self.get_logger().info(f"📍 Final EE position: {ee_pos_final}")
-        self.get_logger().info(f"🎯 Target position:   {self.target_pose.translation}")
-        self.get_logger().info(f"📏 Position error:    {error:.6f} m")
-        
-        # Control statistics
-        u_norms = [np.linalg.norm(u) for u in self.us_solution]
-        self.get_logger().info(f"🎮 Control effort:")
-        self.get_logger().info(f"   - Max:  {np.max(u_norms):.3f}")
-        self.get_logger().info(f"   - Mean: {np.mean(u_norms):.3f}")
-        self.get_logger().info(f"   - Min:  {np.min(u_norms):.3f}")
-        
-        # Joint limits check
-        q_limits_violated = False
-        for i, q in enumerate(self.xs_solution):
-            q_vec = q[:self.model.nq]
-            if np.any(q_vec < self.model.lowerPositionLimit) or \
-               np.any(q_vec > self.model.upperPositionLimit):
-                q_limits_violated = True
-                self.get_logger().warn(f"⚠️  Joint limits violated at step {i}")
-                break
-        
-        if not q_limits_violated:
-            self.get_logger().info("✅ All joint limits respected")
-        
-        self.get_logger().info("=" * 60)
-
 
 def main(args=None):
     rclpy.init(args=args)
