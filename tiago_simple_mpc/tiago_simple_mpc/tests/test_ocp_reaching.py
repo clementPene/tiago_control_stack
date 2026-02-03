@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
 Simple OCP solver node for Tiago reaching task.
-Loads URDF from ROS topic, builds OCP, solves once, and displays results.
+Loads URDF from ROS topic, builds OCP, solves once, and displays results on meshcat
 """
 
 import os
 from ament_index_python.packages import get_package_share_directory
-import time
 
 import rclpy
 from rclpy.node import Node
@@ -18,12 +17,8 @@ from tiago_simple_mpc.core.model_utils import load_reduced_pinocchio_model
 from tiago_simple_mpc.ocp.ocp_builder import OCPBuilder
 from tiago_simple_mpc.ocp.cost_manager import CostModelManager
 
-from linear_feedback_controller_msgs.msg import Control, Sensor
-from linear_feedback_controller_msgs_py.numpy_conversions import (
-    sensor_msg_to_numpy,
-    control_numpy_to_msg,
-)
-import linear_feedback_controller_msgs_py.lfc_py_types as lfc_py_types
+from linear_feedback_controller_msgs.msg import Sensor
+from linear_feedback_controller_msgs_py.numpy_conversions import sensor_msg_to_numpy
 
 from tiago_simple_mpc.ocp.visualizer import TrajectoryVisualizer
 
@@ -68,7 +63,7 @@ class OCPReachingNode(Node):
         self.get_logger().info(f"Model loaded: nq={self.model.nq}, nv={self.model.nv}")
 
         # Initialize MeshCat
-        self.get_logger().info("🎨 Initializing MeshCat viewer...")
+        self.get_logger().info("Initializing MeshCat viewer...")
         self.viz_server = meshcat.Visualizer()
         self.viz_server.open()
         
@@ -81,11 +76,11 @@ class OCPReachingNode(Node):
         
         # Get frame ID
         if not self.model.existFrame(self.target_frame):
-            self.get_logger().error(f"❌ Frame '{self.target_frame}' not found!")
+            self.get_logger().error(f"Frame '{self.target_frame}' not found!")
             raise ValueError(f"Frame '{self.target_frame}' does not exist in model")
 
         self.frame_id = self.model.getFrameId(self.target_frame)
-        self.get_logger().info(f"🎯 Target frame ID: {self.frame_id}")
+        self.get_logger().info(f"Target frame ID: {self.frame_id}")
 
         self.sensor_received = False # Will be set in callback
         self.current_sensor_py = None
@@ -108,7 +103,7 @@ class OCPReachingNode(Node):
             qos_profile=qos_rt
         )
         
-        self.get_logger().info("⏳ Waiting for initial sensor measurement...")
+        self.get_logger().info("Waiting for initial sensor measurement...")
          
         
     def sensor_callback_oneshot(self, msg):
@@ -135,18 +130,18 @@ class OCPReachingNode(Node):
                 f"{'='*60}"
             )
 
-            # validation: Check arm joints dimension
+            # validation: Check joints dimension
             n_joints = self.nv - 3 if self.has_free_flyer else self.nv
             if len(q_measured) != n_joints:
                 self.get_logger().error(
-                    f"❌ Sensor dimension mismatch!\n"
+                    f"Sensor dimension mismatch!\n"
                     f"  Expected arm joints: {n_joints}\n"
                     f"  Received: q={len(q_measured)}, v={len(v_measured)}",
                     throttle_duration_sec=2.0
                 )
                 return
 
-            # reconstruction: FreeFlyer vs Fixed Base
+            # Reconstruction: FreeFlyer vs Fixed Base
             if self.has_free_flyer:
                 # with planar base
                 base_pose_ff = self.current_sensor_py.base_pose      # [x, y, z, qx, qy, qz, qw]
@@ -154,10 +149,10 @@ class OCPReachingNode(Node):
 
                 # Validation
                 if len(base_pose_ff) != 7:
-                    self.get_logger().error(f"❌ base_pose invalid: {len(base_pose_ff)} (expected 7)")
+                    self.get_logger().error(f"base_pose invalid: {len(base_pose_ff)} (expected 7)")
                     return
                 if len(base_twist_ff) != 6:
-                    self.get_logger().error(f"❌ base_twist invalid: {len(base_twist_ff)} (expected 6)")
+                    self.get_logger().error(f"base_twist invalid: {len(base_twist_ff)} (expected 6)")
                     return
 
                 # CONVERSION FREEFLYER → PLANAR
@@ -175,10 +170,10 @@ class OCPReachingNode(Node):
                 q_full = q_measured
                 v_full = v_measured
 
-            # --- FINAL VALIDATION ---
+            # Final validation
             if len(q_full) != self.nq:
                 self.get_logger().error(
-                    f"❌ Configuration dimension mismatch!\n"
+                    f"Configuration dimension mismatch!\n"
                     f"  Expected nq: {self.nq}\n"
                     f"  Reconstructed: {len(q_full)}\n"
                     f"  Breakdown:\n"
@@ -190,7 +185,7 @@ class OCPReachingNode(Node):
 
             if len(v_full) != self.nv:
                 self.get_logger().error(
-                    f"❌ Velocity dimension mismatch!\n"
+                    f"Velocity dimension mismatch!\n"
                     f"  Expected nv: {self.nv}\n"
                     f"  Reconstructed: {len(v_full)}\n"
                     f"  Breakdown:\n"
@@ -200,7 +195,7 @@ class OCPReachingNode(Node):
                 )
                 return
 
-            # CONSTRUCT FULL STATE
+            # Construct full state
             self.x_measured = np.concatenate([q_full, v_full])
             self.x_measured
 
@@ -214,7 +209,7 @@ class OCPReachingNode(Node):
             ee_measured = ee_measured_pose.translation.copy()
 
             # Set target pose
-            self.target_pose = pin.SE3(np.eye(3), np.array([2.0, 2.0, 0.3]))
+            self.target_pose = pin.SE3(np.eye(3), np.array([2.0, 2.0, 1.0]))
             
             self.get_logger().info(
                 f"Initial state received:\n"
@@ -289,11 +284,11 @@ class OCPReachingNode(Node):
                 trajectory_q=self.trajectory_q,
                 fps=30,
                 slowdown=2.0,
-                pause_between_loops=2.0  # 2 seconde de pause entre chaque boucle
+                pause_between_loops=2.0  # number of seconds to pause between loops
             )
 
         except Exception as e:
-            self.get_logger().error(f"❌ Error in sensor callback: {e}")
+            self.get_logger().error(f"Error in sensor callback: {e}")
             import traceback
             traceback.print_exc()
 
@@ -352,12 +347,12 @@ class OCPReachingNode(Node):
         # ωy = v_ff[4]  # not used in planar
         omega = v_ff[5]  # Rotational velocity around Z (yaw)
 
-        # Build v_planar (more efficient)
+        # Build v_planar
         v_planar = np.array([vx, vy, omega])
 
         # Validation
-        assert q_planar.shape == (4,), f"❌ q_planar shape error: {q_planar.shape}, expected (4,)"
-        assert v_planar.shape == (3,), f"❌ v_planar shape error: {v_planar.shape}, expected (3,)"
+        assert q_planar.shape == (4,), f"q_planar shape error: {q_planar.shape}, expected (4,)"
+        assert v_planar.shape == (3,), f"v_planar shape error: {v_planar.shape}, expected (3,)"
 
         return q_planar, v_planar
     
@@ -395,7 +390,7 @@ class OCPReachingNode(Node):
         self.get_logger().info(f"Config path: {state_weights_config}")
         state_reg_weight = 1e-2
         running_cost_manager.add_weighted_regulation_state_cost(
-            x_ref=self.x_measured,  # Régularise autour de la config initiale
+            x_ref=self.x_measured, 
             config_filepath=state_weights_config,
             weight=state_reg_weight,
         )
@@ -440,7 +435,7 @@ class OCPReachingNode(Node):
         us_init = [np.zeros(self.ocp_builder.nu)] * self.horizon_steps
         
         # Solve
-        self.get_logger().info("⏳ Running FDDP solver...")
+        self.get_logger().info("Running FDDP solver...")
         MAX_ITER = 50  # max iteration
         converged = self.solver.solve(xs_init, us_init, MAX_ITER, False)
         
@@ -449,9 +444,9 @@ class OCPReachingNode(Node):
         self.trajectory_q = [xs[:nq] for xs in self.solver.xs]
         
         if converged:
-            self.get_logger().info(f"✅ Solver converged in {self.solver.iter} iterations")
+            self.get_logger().info(f"Solver converged in {self.solver.iter} iterations")
         else:
-            self.get_logger().warn(f"⚠️ Solver did NOT converge after {self.solver.iter} iterations")
+            self.get_logger().warn(f"Solver did NOT converge after {self.solver.iter} iterations")
         
         # Store solution
         self.xs_solution = self.solver.xs
@@ -466,7 +461,7 @@ def main(args=None):
         # Node does everything in __init__, no need to spin
         # node.destroy_node()
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
     finally:
