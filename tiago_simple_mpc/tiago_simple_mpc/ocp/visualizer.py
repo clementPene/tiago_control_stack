@@ -54,7 +54,7 @@ class TrajectoryVisualizer:
             slowdown: Factor to slow down (>1) or speed up (<1) the replay
         """
         if not trajectory_q or len(trajectory_q) == 0:
-            self.logger.warn("⚠️ No trajectory to replay!")
+            self.logger.warn("No trajectory to replay!")
             return
 
         self.logger.info(
@@ -110,7 +110,7 @@ class TrajectoryVisualizer:
             cost: Final OCP cost
         """
         self.logger.info("=" * 60)
-        self.logger.info("📊 OCP SOLUTION RESULTS")
+        self.logger.info("OCP SOLUTION RESULTS")
         self.logger.info("=" * 60)
 
         # Final cost
@@ -124,13 +124,13 @@ class TrajectoryVisualizer:
 
         error = np.linalg.norm(ee_pos_final - self.target_pose.translation)
 
-        self.logger.info(f"📍 Final EE position: {ee_pos_final}")
-        self.logger.info(f"🎯 Target position:   {self.target_pose.translation}")
-        self.logger.info(f"📏 Position error:    {error:.6f} m")
+        self.logger.info(f"Final EE position: {ee_pos_final}")
+        self.logger.info(f"Target position:   {self.target_pose.translation}")
+        self.logger.info(f"Position error:    {error:.6f} m")
 
         # Control statistics
         u_norms = [np.linalg.norm(u) for u in us_solution]
-        self.logger.info(f"🎮 Control effort:")
+        self.logger.info(f"Control effort:")
         self.logger.info(f"   - Max:  {np.max(u_norms):.3f}")
         self.logger.info(f"   - Mean: {np.mean(u_norms):.3f}")
         self.logger.info(f"   - Min:  {np.min(u_norms):.3f}")
@@ -142,7 +142,7 @@ class TrajectoryVisualizer:
             if np.any(q_vec < self.model.lowerPositionLimit) or \
                np.any(q_vec > self.model.upperPositionLimit):
                 q_limits_violated = True
-                self.logger.warn(f"⚠️  Joint limits violated at step {i}")
+                self.logger.warn(f"Joint limits violated at step {i}")
                 break
 
         if not q_limits_violated:
@@ -171,7 +171,7 @@ class TrajectoryVisualizer:
             return
 
         self.logger.info(
-            f"🔄 Starting infinite replay loop:\n"
+            f"Starting infinite replay loop:\n"
             f"  Nodes: {len(trajectory_q)}\n"
             f"  Duration: {len(trajectory_q) * self.dt:.2f}s\n"
             f"  FPS: {fps}\n"
@@ -196,5 +196,5 @@ class TrajectoryVisualizer:
                 time.sleep(pause_between_loops)
                 
         except KeyboardInterrupt:
-            self.logger.info(f"\n⏹️  Replay stopped after {loop_count} loops")
+            self.logger.info(f"\nReplay stopped after {loop_count} loops")
 

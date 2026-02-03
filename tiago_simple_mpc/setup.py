@@ -18,13 +18,13 @@ setup(
     ],
     install_requires=[
         'setuptools',
-        'meshcat',  # 🎨 Ajouté pour visualisation
+        'meshcat',
     ],
     zip_safe=True,
     maintainer='cpene',
     maintainer_email='pene.clement@gmail.com',
     description='Simple MPC controller for Tiago using Crocoddyl',
-    license='Apache-2.0',  # ou ta licence
+    license='Apache-2.0',
     extras_require={
         'test': [
             'pytest',

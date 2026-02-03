@@ -14,7 +14,6 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from std_msgs.msg import String
 import pinocchio as pin
-import numpy as np
 
 class ModelLoaderNode(Node):
     """Create a node to get model from the URDF."""
@@ -61,10 +60,10 @@ def load_reduced_pinocchio_model(target_joints_names, has_free_flyer=False):
     # Build full model
     if has_free_flyer:
         full_model = pin.buildModelFromXML(full_urdf_string, pin.JointModelPlanar())
-        print("[ModelLoader] 🌐 Building model with Planar base (2D mobile robot).")
+        print("[ModelLoader] Building model with Planar base (2D mobile robot).")
     else:
         full_model = pin.buildModelFromXML(full_urdf_string)
-        print("[ModelLoader] 🔧 Building model (Fixed Base).")
+        print("[ModelLoader] Building model (Fixed Base).")
 
     # Build geometry models from URDF string
     try:
@@ -74,9 +73,9 @@ def load_reduced_pinocchio_model(target_joints_names, has_free_flyer=False):
             pin.GeometryType.VISUAL,
             package_dirs=[]
         )
-        print(f"[ModelLoader] 🎨 Visual model loaded: {full_visual_model.ngeoms} geometries")
+        print(f"[ModelLoader] Visual model loaded: {full_visual_model.ngeoms} geometries")
     except Exception as e:
-        print(f"[ModelLoader] ⚠️ Could not load visual model: {e}")
+        print(f"[ModelLoader] Could not load visual model: {e}")
         full_visual_model = pin.GeometryModel()
 
     # Identify joints to lock
@@ -118,17 +117,17 @@ def load_reduced_pinocchio_model(target_joints_names, has_free_flyer=False):
     reduced_visual_data = reduced_visual_model.createData()
 
     # Summary
-    print(f"\n[ModelLoader] ✅ Reduced model created:")
-    print(f"  📊 Dimensions: nq={reduced_model.nq}, nv={reduced_model.nv}")
-    print(f"  🎯 Target joints: {len(target_joints_names)}")
-    print(f"  🔒 Locked joints: {len(locked_joint_ids)}")
-    print(f"  🎨 Visual geometries: {reduced_visual_model.ngeoms}")
+    print(f"\n[ModelLoader] Reduced model created:")
+    print(f"  Dimensions: nq={reduced_model.nq}, nv={reduced_model.nv}")
+    print(f"  Target joints: {len(target_joints_names)}")
+    print(f"  Locked joints: {len(locked_joint_ids)}")
+    print(f"  Visual geometries: {reduced_visual_model.ngeoms}")
 
     if has_free_flyer:
         joints_nq = reduced_model.nq - 4
         joints_nv = reduced_model.nv - 3
-        print(f"  🤖 Planar base: nq=4, nv=3")
-        print(f"  🦾 joints: nq={joints_nq}, nv={joints_nv}")
+        print(f"  Planar base: nq=4, nv=3")
+        print(f"  joints: nq={joints_nq}, nv={joints_nv}")
 
     return reduced_model, reduced_data, reduced_visual_model, reduced_visual_data
 
@@ -166,10 +165,10 @@ def load_full_pinocchio_model(has_free_flyer=False):
     # Building the Full Model
     if has_free_flyer:
         full_model = pin.buildModelFromXML(full_urdf_string, pin.JointModelPlanar())
-        print("[ModelLoader] 🌐 Building model with Planar base (2D mobile robot).")
+        print("[ModelLoader] Building model with Planar base (2D mobile robot).")
     else:
         full_model = pin.buildModelFromXML(full_urdf_string)
-        print("[ModelLoader] 🔧 Building model (Fixed Base).")
+        print("[ModelLoader] Building model (Fixed Base).")
 
     full_data = full_model.createData()
 

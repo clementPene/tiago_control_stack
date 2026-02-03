@@ -48,7 +48,6 @@ class OCPBuilder:
         self.has_free_flyer = has_free_flyer
 
         self.state = crocoddyl.StateMultibody(self.rmodel) # input x = (q, v)
-        # self.actuation = crocoddyl.ActuationModelFloatingBase(self.state) # output u = tau_q
 
         # Configure actuation model based on robot type
         if self.has_free_flyer:
